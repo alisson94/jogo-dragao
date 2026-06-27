@@ -1,8 +1,17 @@
-[gd_scene format=3 uid="uid://dyms5kysnuly0"]
+[gd_scene load_steps=3 format=3 uid="uid://dyms5kysnuly0"]
 
 [ext_resource type="Script" uid="uid://dhd5ddw0d52xw" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="PackedScene" uid="uid://8clwaiol5t1a" path="res://scenes/MapaFazenda.tscn" id="2_map"]
 
 [node name="Node2DRaiz" type="Node2D" unique_id=1649873712]
 script = ExtResource("1_main")
 
+[node name="MapaFazenda" parent="." instance=ExtResource("2_map")]
+position = Vector2(40, 260)
+
 [node name="Players" type="Node2D" parent="." unique_id=1332865200]
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(88, 316)
+enabled = true
+zoom = Vector2(0.5, 0.5)

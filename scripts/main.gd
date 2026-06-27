@@ -3,8 +3,12 @@ extends Node2D
 const PORT := 8910
 const MAX_CLIENTS := 1
 const PLAYER_SCENE := preload("res://scenes/player.tscn")
+const DEFAULT_CHARACTER_ID := "player_a"
+const CAMERA_ZOOM := Vector2(4, 4)
+const START_MAXIMIZED := true
 
 @onready var players_root: Node2D = $Players
+@onready var camera: Camera2D = $Camera2D
 
 var players: Dictionary = {}
 var local_player_id := 0
@@ -16,9 +20,13 @@ var join_button: Button
 var alert_button: Button
 var status_label: Label
 var alert_label: Label
+var f11_was_pressed := false
 
 
 func _ready() -> void:
+	_apply_start_window_mode()
+	camera.enabled = true
+	camera.zoom = CAMERA_ZOOM
 	_build_ui()
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
@@ -28,17 +36,37 @@ func _ready() -> void:
 	_set_status("Sem conexao")
 
 
+func _process(_delta: float) -> void:
+	_handle_window_shortcuts()
+	_update_camera_position()
+
+
+func _apply_start_window_mode() -> void:
+	if START_MAXIMIZED:
+		get_window().mode = Window.MODE_MAXIMIZED
+
+
+func _handle_window_shortcuts() -> void:
+	var f11_pressed: bool = Input.is_key_pressed(KEY_F11)
+	if f11_pressed and not f11_was_pressed:
+		if get_window().mode == Window.MODE_FULLSCREEN:
+			get_window().mode = Window.MODE_WINDOWED
+		else:
+			get_window().mode = Window.MODE_FULLSCREEN
+	f11_was_pressed = f11_pressed
+
+
 func _build_ui() -> void:
 	var canvas := CanvasLayer.new()
 	canvas.name = "UI"
 	add_child(canvas)
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(470, 220)
+	panel.custom_minimum_size = Vector2(500, 240)
 	panel.offset_left = 12
 	panel.offset_top = 12
-	panel.offset_right = 482
-	panel.offset_bottom = 232
+	panel.offset_right = 512
+	panel.offset_bottom = 252
 	canvas.add_child(panel)
 
 	var layout := VBoxContainer.new()
@@ -75,7 +103,7 @@ func _build_ui() -> void:
 	layout.add_child(alert_button)
 
 	var help_label := Label.new()
-	help_label.text = "Porta UDP %s | Hamachi: entre usando o IP Hamachi de quem hospedou | Espaco: brilhar" % PORT
+	help_label.text = "Porta UDP %s | Hamachi: use o IP do host | Espaco: brilhar | 1/2/3 ou Tab: trocar sprite" % PORT
 	help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	layout.add_child(help_label)
 
@@ -101,8 +129,9 @@ func _on_host_pressed() -> void:
 
 	multiplayer.multiplayer_peer = network_peer
 	local_player_id = multiplayer.get_unique_id()
-	_spawn_player(local_player_id, _spawn_position_for(local_player_id))
+	_spawn_player(local_player_id, _spawn_position_for(local_player_id), DEFAULT_CHARACTER_ID)
 	_set_connected_ui(true)
+	ip_input.release_focus()
 	_set_status("Hospedando em UDP %s. Envie seu IP Hamachi para o outro jogador." % PORT)
 
 
@@ -121,6 +150,7 @@ func _on_join_pressed() -> void:
 		return
 
 	multiplayer.multiplayer_peer = network_peer
+	ip_input.release_focus()
 	_set_status("Conectando em %s:%s via UDP..." % [address, PORT])
 
 
@@ -144,14 +174,14 @@ func _on_peer_connected(peer_id: int) -> void:
 		return
 
 	var spawn_position := _spawn_position_for(peer_id)
-	_spawn_player(peer_id, spawn_position)
+	_spawn_player(peer_id, spawn_position, DEFAULT_CHARACTER_ID)
 
 	for player_id in players:
-		spawn_player_remote.rpc_id(peer_id, player_id, players[player_id].global_position)
+		spawn_player_remote.rpc_id(peer_id, player_id, players[player_id].global_position, players[player_id].get_character_id())
 
 	for connected_peer_id in multiplayer.get_peers():
 		if connected_peer_id != peer_id:
-			spawn_player_remote.rpc_id(connected_peer_id, peer_id, spawn_position)
+			spawn_player_remote.rpc_id(connected_peer_id, peer_id, spawn_position, DEFAULT_CHARACTER_ID)
 
 	_set_status("Jogador conectado: Player %s" % peer_id)
 
@@ -168,6 +198,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 func _on_connected_to_server() -> void:
 	local_player_id = multiplayer.get_unique_id()
 	_set_connected_ui(true)
+	ip_input.release_focus()
 	_set_status("Conectado como Player %s" % local_player_id)
 
 
@@ -203,17 +234,20 @@ func _set_status(message: String) -> void:
 	status_label.text = "Status: %s" % message
 
 
-func _spawn_player(player_id: int, spawn_position: Vector2) -> void:
+func _spawn_player(player_id: int, spawn_position: Vector2, character_id: String = DEFAULT_CHARACTER_ID) -> void:
 	if players.has(player_id):
 		players[player_id].global_position = spawn_position
+		players[player_id].apply_character(character_id)
 		return
 
 	var player = PLAYER_SCENE.instantiate()
 	player.name = "Player_%s" % player_id
 	players_root.add_child(player)
-	player.setup(player_id, player_id == _get_local_player_id())
+	player.setup(player_id, player_id == _get_local_player_id(), character_id)
 	player.global_position = spawn_position
 	players[player_id] = player
+	if player_id == _get_local_player_id():
+		camera.global_position = spawn_position
 
 
 func _remove_player(player_id: int) -> void:
@@ -226,8 +260,8 @@ func _remove_player(player_id: int) -> void:
 
 func _spawn_position_for(player_id: int) -> Vector2:
 	if player_id == 1:
-		return Vector2(260, 280)
-	return Vector2(460, 280)
+		return Vector2(88, 316)
+	return Vector2(120, 316)
 
 
 func _get_local_player_id() -> int:
@@ -238,9 +272,17 @@ func _get_local_player_id() -> int:
 	return 0
 
 
+func _update_camera_position() -> void:
+	var current_player_id: int = _get_local_player_id()
+	if not players.has(current_player_id):
+		return
+
+	camera.global_position = players[current_player_id].global_position
+
+
 @rpc("authority", "call_remote", "reliable")
-func spawn_player_remote(player_id: int, spawn_position: Vector2) -> void:
-	_spawn_player(player_id, spawn_position)
+func spawn_player_remote(player_id: int, spawn_position: Vector2, character_id: String = DEFAULT_CHARACTER_ID) -> void:
+	_spawn_player(player_id, spawn_position, character_id)
 
 
 @rpc("authority", "call_remote", "reliable")
